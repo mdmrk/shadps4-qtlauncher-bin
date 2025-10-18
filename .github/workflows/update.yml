@@ -68,7 +68,7 @@ jobs:
           echo "Current AUR version: $CURRENT_VER"
           echo "New version: $NEW_VER"
 
-          if [ "$CURRENT_VER" != "$NEW_VER" ]; then
+          if [ "$CURRENT_VER" = "$NEW_VER" ]; then
             echo "needs_update=false" >> $GITHUB_OUTPUT
             echo "No update needed"
           else
