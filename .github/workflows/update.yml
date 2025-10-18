@@ -112,7 +112,6 @@ jobs:
         if: steps.check_update.outputs.needs_update == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.get_release.outputs.pkgver }}
           name: shadPS4QtLauncher Nightly v${{ steps.get_release.outputs.pkgver }}
           body: |
             Mirror of shadPS4QtLauncher nightly build for AUR package.
