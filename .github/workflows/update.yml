@@ -21,26 +21,25 @@ jobs:
           RELEASE_DATA=$(curl -s https://api.github.com/repos/shadps4-emu/shadps4-qtlauncher/releases | jq '.[0]')
 
           TAG_NAME=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
+          # TAG_NAME format: shadPS4QtLauncher-2025-10-18-4c9efe028e673fbfdb507b9a627fa5bd94bdcd6d
+          # Extract parts: shadPS4QtLauncher-YYYY-MM-DD-FULLCOMMIT
           FULL_COMMIT=$(echo "$TAG_NAME" | awk -F'-' '{print $NF}')
-          DATE_PART=$(echo "$TAG_NAME" | awk -F'-' '{print $4"-"$5"-"$6}')
           SHORT_COMMIT=$(echo "$FULL_COMMIT" | cut -c1-7)
+          DATE_PART=$(echo "$TAG_NAME" | awk -F'-' '{print $2"-"$3"-"$4}')
           PKGVER_DATE_PART=$(echo "$DATE_PART" | sed 's/-/./g')
           PKGVER="${PKGVER_DATE_PART}.${SHORT_COMMIT}"
 
-          LINUX_APPIMAGE_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | test("linux.*\\.AppImage$"; "i")) | .browser_download_url' | head -n1)
-          LINUX_QT_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | test("linux-qt.*\\.zip$"; "i")) | .browser_download_url' | head -n1)
+          LINUX_QT_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | test("qt.*\\.zip$"; "i")) | .browser_download_url' | head -n1)
 
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "pkgver=$PKGVER" >> $GITHUB_OUTPUT
           echo "date_part=$DATE_PART" >> $GITHUB_OUTPUT
           echo "short_commit=$SHORT_COMMIT" >> $GITHUB_OUTPUT
           echo "full_commit=$FULL_COMMIT" >> $GITHUB_OUTPUT
-          echo "linux_appimage_url=$LINUX_APPIMAGE_URL" >> $GITHUB_OUTPUT
           echo "linux_qt_url=$LINUX_QT_URL" >> $GITHUB_OUTPUT
 
           echo "Latest release tag: $TAG_NAME"
           echo "Package version: $PKGVER"
-          echo "Linux AppImage URL: $LINUX_APPIMAGE_URL"
           echo "Linux Qt URL: $LINUX_QT_URL"
 
       - name: Setup SSH for AUR
@@ -85,8 +84,8 @@ jobs:
           SHORT_COMMIT="${{ steps.get_release.outputs.short_commit }}"
 
           if [ -n "${{ steps.get_release.outputs.linux_qt_url }}" ]; then
-            echo "Downloading Linux Qt..."
-            curl -L "${{ steps.get_release.outputs.linux_qt_url }}" -o "artifacts/shadps4-qtlauncher-linux-qt-${DATE_PART}-${SHORT_COMMIT}.zip"
+            echo "Downloading Qt zip..."
+            curl -L "${{ steps.get_release.outputs.linux_qt_url }}" -o "artifacts/shadps4-qtlauncher-qt-${DATE_PART}-${SHORT_COMMIT}.zip"
           fi
 
           ls -lh artifacts/
@@ -121,7 +120,7 @@ jobs:
           FULL_COMMIT="${{ steps.get_release.outputs.full_commit }}"
 
           REPO_URL="https://github.com/${{ github.repository }}"
-          SOURCE_URL="${REPO_URL}/releases/download/v${PKGVER}/shadps4-qtlauncher-linux-qt-${DATE_PART}-${SHORT_COMMIT}.zip"
+          SOURCE_URL="${REPO_URL}/releases/download/v${PKGVER}/shadps4-qtlauncher-qt-${DATE_PART}-${SHORT_COMMIT}.zip"
 
           cd aur-repo
 
@@ -131,7 +130,7 @@ jobs:
           sed -i "s/^_shortcommit=.*/_shortcommit=${SHORT_COMMIT}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
-          sed -i "s|source=(\"shadps4-qtlauncher-linux-qt-.*|source=(\"shadps4-qtlauncher-linux-qt-\${_date}-\${_shortcommit}.zip::${SOURCE_URL}\")|" PKGBUILD
+          sed -i "s|source=(\"shadps4-qtlauncher-qt-.*|source=(\"shadps4-qtlauncher-qt-\${_date}-\${_shortcommit}.zip::${SOURCE_URL}\")|" PKGBUILD
 
       - name: Generate .SRCINFO
         if: steps.check_update.outputs.needs_update == 'true'
