@@ -1,0 +1,208 @@
+name: Update shadPS4QtLauncher AUR Package
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  update-aur:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Get latest shadPS4QtLauncher nightly release data
+        id: get_release
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+
+          RELEASE_DATA=$(curl -s https://api.github.com/repos/shadps4-emu/shadPS4QtLauncher/releases | jq '.[0]')
+
+          TAG_NAME=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
+          FULL_COMMIT=$(echo "$TAG_NAME" | awk -F'-' '{print $NF}')
+          DATE_PART=$(echo "$TAG_NAME" | awk -F'-' '{print $4"-"$5"-"$6}')
+          SHORT_COMMIT=$(echo "$FULL_COMMIT" | cut -c1-7)
+          PKGVER_DATE_PART=$(echo "$DATE_PART" | sed 's/-/./g')
+          PKGVER="${PKGVER_DATE_PART}.${SHORT_COMMIT}"
+
+          LINUX_APPIMAGE_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | test("linux.*\\.AppImage$"; "i")) | .browser_download_url' | head -n1)
+          LINUX_QT_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | test("linux-qt.*\\.zip$"; "i")) | .browser_download_url' | head -n1)
+
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "pkgver=$PKGVER" >> $GITHUB_OUTPUT
+          echo "date_part=$DATE_PART" >> $GITHUB_OUTPUT
+          echo "short_commit=$SHORT_COMMIT" >> $GITHUB_OUTPUT
+          echo "full_commit=$FULL_COMMIT" >> $GITHUB_OUTPUT
+          echo "linux_appimage_url=$LINUX_APPIMAGE_URL" >> $GITHUB_OUTPUT
+          echo "linux_qt_url=$LINUX_QT_URL" >> $GITHUB_OUTPUT
+
+          echo "Latest release tag: $TAG_NAME"
+          echo "Package version: $PKGVER"
+          echo "Linux AppImage URL: $LINUX_APPIMAGE_URL"
+          echo "Linux Qt URL: $LINUX_QT_URL"
+
+      - name: Setup SSH for AUR
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -t rsa,dsa,ecdsa,ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+          cat > ~/.ssh/config << EOF
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur
+            User aur
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Clone AUR repository
+        run: |
+          git clone ssh://aur@aur.archlinux.org/shadps4-qtlauncher-nightly-bin.git aur-repo
+
+      - name: Check if update needed
+        id: check_update
+        run: |
+          CURRENT_VER=$(grep '^pkgver=' aur-repo/PKGBUILD | cut -d'=' -f2)
+          NEW_VER="${{ steps.get_release.outputs.pkgver }}"
+
+          echo "Current AUR version: $CURRENT_VER"
+          echo "New version: $NEW_VER"
+
+          if [ "$CURRENT_VER" = "$NEW_VER" ]; then
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "No update needed"
+          else
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+            echo "Update needed!"
+          fi
+
+      - name: Download shadPS4QtLauncher artifacts
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          mkdir -p artifacts
+          DATE_PART="${{ steps.get_release.outputs.date_part }}"
+          SHORT_COMMIT="${{ steps.get_release.outputs.short_commit }}"
+
+          if [ -n "${{ steps.get_release.outputs.linux_qt_url }}" ]; then
+            echo "Downloading Linux Qt..."
+            curl -L "${{ steps.get_release.outputs.linux_qt_url }}" -o "artifacts/shadps4-qtlauncher-linux-qt-${DATE_PART}-${SHORT_COMMIT}.zip"
+          fi
+
+          ls -lh artifacts/
+
+      - name: Delete previous release if exists
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ steps.get_release.outputs.pkgver }}" \
+            | jq -r '.id // empty')
+
+          if [ -n "$RELEASE_ID" ]; then
+            echo "Deleting existing release with ID: $RELEASE_ID"
+            curl -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
+          else
+            echo "No existing release found"
+          fi
+
+          git push --delete origin "v${{ steps.get_release.outputs.pkgver }}" 2>/dev/null || echo "Tag does not exist"
+
+      - name: Create new release with artifacts
+        if: steps.check_update.outputs.needs_update == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_release.outputs.pkgver }}
+          name: shadPS4QtLauncher Nightly v${{ steps.get_release.outputs.pkgver }}
+          body: |
+            Mirror of shadPS4QtLauncher nightly build for AUR package.
+
+            **Original Release:** ${{ steps.get_release.outputs.tag_name }}
+            **Commit:** ${{ steps.get_release.outputs.full_commit }}
+            **Date:** ${{ steps.get_release.outputs.date_part }}
+          files: artifacts/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update PKGBUILD with mirror URLs
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          PKGVER="${{ steps.get_release.outputs.pkgver }}"
+          DATE_PART="${{ steps.get_release.outputs.date_part }}"
+          SHORT_COMMIT="${{ steps.get_release.outputs.short_commit }}"
+          FULL_COMMIT="${{ steps.get_release.outputs.full_commit }}"
+
+          REPO_URL="https://github.com/${{ github.repository }}"
+          SOURCE_URL="${REPO_URL}/releases/download/v${PKGVER}/shadps4-qtlauncher-linux-qt-${DATE_PART}-${SHORT_COMMIT}.zip"
+
+          cd aur-repo
+
+          sed -i "s/^pkgver=.*/pkgver=${PKGVER}/" PKGBUILD
+          sed -i "s/^_date=.*/_date=${DATE_PART}/" PKGBUILD
+          sed -i "s/^_commit=.*/_commit=${FULL_COMMIT}/" PKGBUILD
+          sed -i "s/^_shortcommit=.*/_shortcommit=${SHORT_COMMIT}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+          sed -i "s|source=(\"shadps4-qtlauncher-linux-qt-.*|source=(\"shadps4-qtlauncher-linux-qt-\${_date}-\${_shortcommit}.zip::${SOURCE_URL}\")|" PKGBUILD
+
+      - name: Generate .SRCINFO
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          docker run --rm -v "$(pwd)/aur-repo:/pkg" -w /pkg archlinux:latest bash -c "
+            pacman -Sy --noconfirm base-devel &&
+            useradd -m builder &&
+            cp PKGBUILD /tmp/ &&
+            chown builder:builder /tmp/PKGBUILD &&
+            cd /tmp &&
+            su builder -c 'makepkg --printsrcinfo' > /pkg/.SRCINFO
+          "
+
+          sudo chown -R $USER:$USER aur-repo
+
+      - name: Update AUR repository
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          cd aur-repo
+
+          git config user.name "mdmrk"
+          git config user.email "mariodavo.20@gmail.com"
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes detected in AUR repository"
+            exit 0
+          fi
+
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update shadps4-qtlauncher-nightly-bin to version ${{ steps.get_release.outputs.pkgver }}"
+          git push origin master
+
+      - name: Update local repository
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          cp aur-repo/PKGBUILD .
+          cp aur-repo/.SRCINFO .
+
+          git config user.name "mdmrk"
+          git config user.email "mariodavo.20@gmail.com"
+
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to version ${{ steps.get_release.outputs.pkgver }}"
+          git push
+
+      - name: Create summary
+        if: steps.check_update.outputs.needs_update == 'true'
+        run: |
+          echo "## shadPS4QtLauncher AUR Package Updated! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **New Version:** ${{ steps.get_release.outputs.pkgver }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit SHA:** ${{ steps.get_release.outputs.short_commit }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mirror Release:** https://github.com/${{ github.repository }}/releases/tag/v${{ steps.get_release.outputs.pkgver }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: No update needed
+        if: steps.check_update.outputs.needs_update == 'false'
+        run: |
+          echo "## No Update Needed ✓" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "shadps4-qtlauncher-nightly-bin package is already up to date." >> $GITHUB_STEP_SUMMARY
