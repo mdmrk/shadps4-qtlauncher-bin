@@ -18,7 +18,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y jq
 
-          RELEASE_DATA=$(curl -s https://api.github.com/repos/shadps4-emu/shadPS4QtLauncher/releases | jq '.[0]')
+          RELEASE_DATA=$(curl -s https://api.github.com/repos/shadps4-emu/shadps4-qtlauncher/releases | jq '.[0]')
 
           TAG_NAME=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
           FULL_COMMIT=$(echo "$TAG_NAME" | awk -F'-' '{print $NF}')
