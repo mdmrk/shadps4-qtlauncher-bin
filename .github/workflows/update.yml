@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Get latest shadPS4QtLauncher nightly release data
+      - name: Get latest shadPS4QtLauncher release data
         id: get_release
         run: |
           sudo apt-get update && sudo apt-get install -y jq
@@ -58,7 +58,7 @@ jobs:
 
       - name: Clone AUR repository
         run: |
-          git clone ssh://aur@aur.archlinux.org/shadps4-qtlauncher-nightly-bin.git aur-repo
+          git clone ssh://aur@aur.archlinux.org/shadps4-qtlauncher-bin.git aur-repo
 
       - name: Check if update needed
         id: check_update
@@ -95,10 +95,10 @@ jobs:
         if: steps.check_update.outputs.needs_update == 'true'
         uses: ncipollo/release-action@v1
         with:
-          tag: v${{ steps.get_release.outputs.pkgver }}
-          name: shadPS4QtLauncher Nightly v${{ steps.get_release.outputs.pkgver }}
+          tag: ${{ steps.get_release.outputs.tag_name }}
+          name: shadPS4QtLauncher ${{ steps.get_release.outputs.pkgver }}
           body: |
-            Mirror of shadPS4QtLauncher nightly build for AUR package.
+            Mirror of shadPS4QtLauncher build for AUR package.
 
             **Original Release:** ${{ steps.get_release.outputs.tag_name }}
             **Commit:** ${{ steps.get_release.outputs.full_commit }}
@@ -161,7 +161,7 @@ jobs:
           fi
 
           git add PKGBUILD .SRCINFO
-          git commit -m "Update shadps4-qtlauncher-nightly-bin to version ${{ steps.get_release.outputs.pkgver }}"
+          git commit -m "Update shadps4-qtlauncher-bin to version ${{ steps.get_release.outputs.pkgver }}"
           git push origin master
 
       - name: Update local repository
@@ -191,4 +191,4 @@ jobs:
         run: |
           echo "## No Update Needed ✓" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "shadps4-qtlauncher-nightly-bin package is already up to date." >> $GITHUB_STEP_SUMMARY
+          echo "shadps4-qtlauncher-bin package is already up to date." >> $GITHUB_STEP_SUMMARY
