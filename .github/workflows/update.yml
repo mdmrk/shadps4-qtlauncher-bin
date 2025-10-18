@@ -91,27 +91,11 @@ jobs:
 
           ls -lh artifacts/
 
-      - name: Delete previous release if exists
+      - name: Create or update release with artifacts
         if: steps.check_update.outputs.needs_update == 'true'
-        run: |
-          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ steps.get_release.outputs.pkgver }}" \
-            | jq -r '.id // empty')
-
-          if [ -n "$RELEASE_ID" ]; then
-            echo "Deleting existing release with ID: $RELEASE_ID"
-            curl -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
-          else
-            echo "No existing release found"
-          fi
-
-          git push --delete origin "v${{ steps.get_release.outputs.pkgver }}" 2>/dev/null || echo "Tag does not exist"
-
-      - name: Create new release with artifacts
-        if: steps.check_update.outputs.needs_update == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: ncipollo/release-action@v1
         with:
+          tag: v${{ steps.get_release.outputs.pkgver }}
           name: shadPS4QtLauncher Nightly v${{ steps.get_release.outputs.pkgver }}
           body: |
             Mirror of shadPS4QtLauncher nightly build for AUR package.
@@ -119,11 +103,14 @@ jobs:
             **Original Release:** ${{ steps.get_release.outputs.tag_name }}
             **Commit:** ${{ steps.get_release.outputs.full_commit }}
             **Date:** ${{ steps.get_release.outputs.date_part }}
-          files: artifacts/*
+          artifacts: "artifacts/*"
+          allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          makeLatest: true
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update PKGBUILD with mirror URLs
         if: steps.check_update.outputs.needs_update == 'true'
