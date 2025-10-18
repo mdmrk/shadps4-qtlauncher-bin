@@ -29,7 +29,7 @@ jobs:
           PKGVER_DATE_PART=$(echo "$DATE_PART" | sed 's/-/./g')
           PKGVER="${PKGVER_DATE_PART}.${SHORT_COMMIT}"
 
-          LINUX_QT_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | test("qt.*\\.zip$"; "i")) | .browser_download_url' | head -n1)
+          LINUX_QT_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | contains("shadps4-qtlauncher") and endswith(".zip")) | .browser_download_url' | head -n1)
 
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "pkgver=$PKGVER" >> $GITHUB_OUTPUT
@@ -85,7 +85,7 @@ jobs:
 
           if [ -n "${{ steps.get_release.outputs.linux_qt_url }}" ]; then
             echo "Downloading Qt zip..."
-            curl -L "${{ steps.get_release.outputs.linux_qt_url }}" -o "artifacts/shadps4-qtlauncher-qt-${DATE_PART}-${SHORT_COMMIT}.zip"
+            curl -L "${{ steps.get_release.outputs.linux_qt_url }}" -o "artifacts/shadps4-qtlauncher-${DATE_PART}-${SHORT_COMMIT}.zip"
           fi
 
           ls -lh artifacts/
@@ -118,9 +118,10 @@ jobs:
           DATE_PART="${{ steps.get_release.outputs.date_part }}"
           SHORT_COMMIT="${{ steps.get_release.outputs.short_commit }}"
           FULL_COMMIT="${{ steps.get_release.outputs.full_commit }}"
+          TAG_NAME="${{ steps.get_release.outputs.tag_name }}"
 
           REPO_URL="https://github.com/${{ github.repository }}"
-          SOURCE_URL="${REPO_URL}/releases/download/v${PKGVER}/shadps4-qtlauncher-qt-${DATE_PART}-${SHORT_COMMIT}.zip"
+          SOURCE_URL="${REPO_URL}/releases/download/${TAG_NAME}/shadps4-qtlauncher-${DATE_PART}-${SHORT_COMMIT}.zip"
 
           cd aur-repo
 
@@ -130,7 +131,7 @@ jobs:
           sed -i "s/^_shortcommit=.*/_shortcommit=${SHORT_COMMIT}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
-          sed -i "s|source=(\"shadps4-qtlauncher-qt-.*|source=(\"shadps4-qtlauncher-qt-\${_date}-\${_shortcommit}.zip::${SOURCE_URL}\")|" PKGBUILD
+          sed -i "s|source=(\"shadps4-qtlauncher-.*|source=(\"shadps4-qtlauncher-\${_date}-\${_shortcommit}.zip::${SOURCE_URL}\")|" PKGBUILD
 
       - name: Generate .SRCINFO
         if: steps.check_update.outputs.needs_update == 'true'
@@ -183,7 +184,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **New Version:** ${{ steps.get_release.outputs.pkgver }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit SHA:** ${{ steps.get_release.outputs.short_commit }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Mirror Release:** https://github.com/${{ github.repository }}/releases/tag/v${{ steps.get_release.outputs.pkgver }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mirror Release:** https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_release.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
 
       - name: No update needed
         if: steps.check_update.outputs.needs_update == 'false'
